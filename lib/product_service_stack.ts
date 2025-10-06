@@ -132,33 +132,40 @@ export class ProductServiceStack extends cdk.Stack {
 
     // Setup for products resource and integration with API Gateway
     const createProductLambdaIntegration = new apigateway.LambdaIntegration(createProduct, {
+      requestTemplates: {
+        'application/json': '$input.json("$")'
+      },
       integrationResponses: [
         {
           statusCode: '200',
           responseParameters: {
             "method.response.header.Access-Control-Allow-Origin": "'https://d2hen05bx3i872.cloudfront.net'",
             "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-            "method.response.header.Access-Control-Allow-Methods": "'GET,OPTIONS'"
+            "method.response.header.Access-Control-Allow-Methods": "'POST,OPTIONS'"
           }
         },
         {
-          selectionPattern: "BadRequest",
+          selectionPattern: '.*BadRequest.*',
           statusCode: '400',
           responseParameters: {
             "method.response.header.Access-Control-Allow-Origin": "'https://d2hen05bx3i872.cloudfront.net'",
             "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-            "method.response.header.Access-Control-Allow-Methods": "'GET,OPTIONS'"
+            "method.response.header.Access-Control-Allow-Methods": "'POST,OPTIONS'"
           },
           responseTemplates: {
-            "application/json": JSON.stringify({ error: "Bad Request" })
+            'application/json': `{
+              "error": "Bad Request",
+              "message": "$util.escapeJavaScript($input.path('$'))"
+            }`
           }
         },{
-          selectionPattern: "Unknown error",
+          selectionPattern: '.*Unknown error.*',
           statusCode: '500',
           responseParameters: {
             "method.response.header.Access-Control-Allow-Origin": "'https://d2hen05bx3i872.cloudfront.net'",
           },
-        }
+        },
+
       ],
       proxy: false,
     });
@@ -176,7 +183,9 @@ export class ProductServiceStack extends cdk.Stack {
           statusCode: '400',
           responseParameters: {
             "method.response.header.Access-Control-Allow-Origin": true,
-          },
+            "method.response.header.Access-Control-Allow-Headers": true,
+            "method.response.header.Access-Control-Allow-Methods": true
+          }
         },{
           statusCode: '500',
           responseParameters: {
