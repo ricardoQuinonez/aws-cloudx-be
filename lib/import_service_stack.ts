@@ -19,6 +19,14 @@ export class ImportServiceStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+    bucket.addCorsRule({
+      allowedOrigins: ['https://d2hen05bx3i872.cloudfront.net'],
+      allowedMethods: [
+        s3.HttpMethods.GET,
+        s3.HttpMethods.PUT,
+      ],
+      allowedHeaders: ['*'],
+    });
     new cr.AwsCustomResource(this, 'uploadedFolder', {
       onCreate: {
         service: "S3",
@@ -87,6 +95,8 @@ export class ImportServiceStack extends cdk.Stack {
           statusCode: '500',
           responseParameters: {
             "method.response.header.Access-Control-Allow-Origin": "'https://d2hen05bx3i872.cloudfront.net'",
+            "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+            "method.response.header.Access-Control-Allow-Methods": "'GET,OPTIONS'"
           },
         }
       ],
@@ -116,12 +126,15 @@ export class ImportServiceStack extends cdk.Stack {
         statusCode: '500',
         responseParameters: {
           "method.response.header.Access-Control-Allow-Origin": true,
+          "method.response.header.Access-Control-Allow-Headers": true,
+          "method.response.header.Access-Control-Allow-Methods": true
         },
       }]
     });
     addFileResources.addCorsPreflight({
       allowOrigins: ['https://d2hen05bx3i872.cloudfront.net'],
-      allowMethods: ['GET']
+      allowMethods: ['GET', 'PUT', 'OPTIONS'],
+      allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
     });
 
     // Import file parser lambda
