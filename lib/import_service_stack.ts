@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as cr from "aws-cdk-lib/custom-resources"
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -74,6 +75,14 @@ export class ImportServiceStack extends cdk.Stack {
             "method.response.header.Access-Control-Allow-Methods": "'GET,OPTIONS'"
           }
         }, {
+          selectionPattern: ".*NotFound.*",
+          statusCode: '404',
+          responseParameters: {
+            "method.response.header.Access-Control-Allow-Origin": "'https://d2hen05bx3i872.cloudfront.net'",
+            "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+            "method.response.header.Access-Control-Allow-Methods": "'GET,OPTIONS'"
+          }
+        }, {
           selectionPattern: "Unknown error",
           statusCode: '500',
           responseParameters: {
@@ -114,5 +123,25 @@ export class ImportServiceStack extends cdk.Stack {
       allowOrigins: ['https://d2hen05bx3i872.cloudfront.net'],
       allowMethods: ['GET']
     });
+
+    // Import file parser lambda
+    const importFileParser = new lambda.Function(this, 'import-file-parser', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(5),
+      handler: 'import-file-parser/handler.main',
+      code: lambda.Code.fromAsset(path.join(__dirname, './')),
+      environment: {
+        BUCKET_NAME: bucket.bucketName,
+      },
+    });
+
+    bucket.grantReadWrite(importFileParser);
+
+    bucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(importFileParser),
+      { prefix: 'uploaded/'}
+    );
   }
 }
