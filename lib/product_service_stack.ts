@@ -4,6 +4,11 @@ import * as cdk from 'aws-cdk-lib';
 import * as path from 'path';
 import { Construct } from 'constructs';
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -29,12 +34,13 @@ export class ProductServiceStack extends cdk.Stack {
     });
 
     // Set Lambda functions
-    const seedData = new lambda.Function(this, 'seed-data', {
+    const seedData = new NodejsFunction(this, 'seed-data', {
       runtime: lambda.Runtime.NODEJS_20_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
-      handler: 'seed-db/handler.main',
-      code: lambda.Code.fromAsset(path.join(__dirname, './')),
+      handler: 'main',
+      entry: path.join(__dirname, "./seed-db/handler.ts"),
+      bundling: { minify: true, externalModules: ["aws-sdk"] },
       environment: {
         PRODUCT_TABLE_NAME: productsTable.tableName,
         STOCK_TABLE_NAME: stockTable.tableName,
@@ -43,12 +49,13 @@ export class ProductServiceStack extends cdk.Stack {
     productsTable.grantWriteData(seedData);
     stockTable.grantWriteData(seedData);
 
-    const createProduct = new lambda.Function(this, 'create-product', {
+    const createProduct = new NodejsFunction(this, 'create-product', {
       runtime: lambda.Runtime.NODEJS_20_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
-      handler: 'create-product/handler.main',
-      code: lambda.Code.fromAsset(path.join(__dirname, './')),
+      handler: 'main',
+      entry: path.join(__dirname, "./create-product/handler.ts"),
+      bundling: { minify: true, externalModules: ["aws-sdk"] },
       environment: {
         PRODUCT_TABLE_NAME: productsTable.tableName,
         STOCK_TABLE_NAME: stockTable.tableName,
@@ -57,12 +64,13 @@ export class ProductServiceStack extends cdk.Stack {
     productsTable.grantWriteData(createProduct);
     stockTable.grantWriteData(createProduct);
 
-    const getProductList = new lambda.Function(this, 'get-product-list', {
+    const getProductList = new NodejsFunction(this, 'get-product-list', {
       runtime: lambda.Runtime.NODEJS_20_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
-      handler: 'get-product-list/handler.main',
-      code: lambda.Code.fromAsset(path.join(__dirname, './')),
+      handler: 'main',
+      entry: path.join(__dirname, "./get-product-list/handler.ts"),
+      bundling: { minify: true, externalModules: ["aws-sdk"] },
       environment: {
         PRODUCT_TABLE_NAME: productsTable.tableName,
         STOCK_TABLE_NAME: stockTable.tableName,
@@ -71,12 +79,13 @@ export class ProductServiceStack extends cdk.Stack {
     productsTable.grantReadData(getProductList);
     stockTable.grantReadData(getProductList);
 
-    const getProduct = new lambda.Function(this, 'get-product', {
+    const getProduct = new NodejsFunction(this, 'get-product', {
       runtime: lambda.Runtime.NODEJS_20_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
-      handler: 'get-product/handler.main',
-      code: lambda.Code.fromAsset(path.join(__dirname, './')),
+      handler: 'main',
+      entry: path.join(__dirname, "./get-product/handler.ts"),
+      bundling: { minify: true, externalModules: ["aws-sdk"] },
       environment: {
         PRODUCT_TABLE_NAME: productsTable.tableName,
         STOCK_TABLE_NAME: stockTable.tableName,
@@ -302,5 +311,45 @@ export class ProductServiceStack extends cdk.Stack {
       allowOrigins: ['https://d2hen05bx3i872.cloudfront.net'],
       allowMethods: ['GET']
     });
+
+    // Product SNS
+    const createProductTopic = new sns.Topic(this, "create-product-topic" );
+    createProductTopic.addSubscription(
+      new subs.EmailSubscription("ricardo_quinonez@epam.com")
+    );
+    createProductTopic.addSubscription(
+      new subs.EmailSubscription("vir_qup_91@hotmail.com", {
+        filterPolicy: {
+          hasEmpty: sns.SubscriptionFilter.stringFilter({
+            allowlist: ['true'],
+          }),
+        },
+      })
+    );
+
+    // Product SQS
+    const catalogItemsQueue = new sqs.Queue(this, "catalog-items-queue");
+    const catalogBatchProcess = new NodejsFunction(this, "catalog-batch-process", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(5),
+      handler: "main",
+      entry: path.join(__dirname, "./catalog-batch-process/handler.ts"),
+      bundling: { minify: true, externalModules: ["aws-sdk"] },
+      environment: {
+        PRODUCT_TABLE_NAME: productsTable.tableName,
+        STOCK_TABLE_NAME: stockTable.tableName,
+        CREATE_PRODUCT_ARN: createProductTopic.topicArn,
+      },
+    });
+
+    catalogBatchProcess.addEventSource(new SqsEventSource(catalogItemsQueue, {
+      batchSize: 5,
+    }));
+
+    productsTable.grantWriteData(catalogBatchProcess);
+    stockTable.grantWriteData(catalogBatchProcess);
+
+    createProductTopic.grantPublish(catalogBatchProcess);
   }
 }
