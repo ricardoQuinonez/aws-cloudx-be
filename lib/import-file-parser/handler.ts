@@ -2,16 +2,17 @@ import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } fr
 import { Handler } from 'aws-lambda';
 import csv from "csv-parser";
 import { Readable } from "stream";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 
 const bucketName = process.env.BUCKET_NAME as string;
+const sqsQueueUrl = process.env.SQS_QUEUE_URL as string;
 const s3 = new S3Client({ region: process.env.AWS_REGION });
+const sqs = new SQSClient({ region: process.env.AWS_REGION });
 
-const logCSVRows = async (csvStream: Readable) => {
+const processCSVRows = async (csvStream: Readable, processCallback = (item: any) => {}) => {
   await new Promise<void>((resolve, reject) => {
     csvStream.pipe(csv())
-      .on("data", (row) => {
-        console.log("CSV Row:", row);
-      })
+      .on("data", processCallback)
       .on("end", () => {
         console.log("Parsing completed");
         resolve();
@@ -60,7 +61,15 @@ export const main: Handler = async (event) => {
 
         const stream = Body.transformToWebStream();
         const nodeStream = Readable.fromWeb(stream);
-        await logCSVRows(nodeStream);
+        const sendPromises: Promise<any>[] = [];
+        await processCSVRows(nodeStream, async (item) => {
+          sendPromises.push(sqs.send(new SendMessageCommand({
+            QueueUrl: sqsQueueUrl,
+            MessageBody: JSON.stringify(item),
+          })));
+        });
+        await Promise.all(sendPromises);
+        console.log(`All messages sent to SQS for file ${key}`);
         await moveParsedFile(key);
       }
     } catch (error) {
