@@ -328,7 +328,13 @@ export class ProductServiceStack extends cdk.Stack {
     );
 
     // Product SQS
-    const catalogItemsQueue = new sqs.Queue(this, "catalog-items-queue");
+    const dlq = new sqs.Queue(this, 'CatalogDLQ');
+    const catalogItemsQueue = new sqs.Queue(this, "catalog-items-queue", {
+      deadLetterQueue: {
+        maxReceiveCount: 1,
+        queue: dlq,
+      }
+    });
     const catalogBatchProcess = new NodejsFunction(this, "catalog-batch-process", {
       runtime: lambda.Runtime.NODEJS_20_X,
       memorySize: 256,
