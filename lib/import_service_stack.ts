@@ -6,6 +6,7 @@ import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as path from 'path';
 import * as apigateway from "aws-cdk-lib/aws-apigateway"
+import * as sqs from "aws-cdk-lib/aws-sqs";
 
 const bucketName = 'imports';
 
@@ -138,6 +139,13 @@ export class ImportServiceStack extends cdk.Stack {
     });
 
     // Import file parser lambda
+
+    const catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      "CatalogItemsQueue",
+      "arn:aws:sqs:us-east-1:880385175057:ProductServiceStack-catalogitemsqueue3CBDE59E-dbr5x5WzEmCY"
+    );
+
     const importFileParser = new lambda.Function(this, 'import-file-parser', {
       runtime: lambda.Runtime.NODEJS_20_X,
       memorySize: 256,
@@ -146,9 +154,11 @@ export class ImportServiceStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, './')),
       environment: {
         BUCKET_NAME: bucket.bucketName,
+        SQS_QUEUE_URL: catalogItemsQueue.queueUrl,
       },
     });
 
+    catalogItemsQueue.grantSendMessages(importFileParser);
     bucket.grantReadWrite(importFileParser);
 
     bucket.addEventNotification(
@@ -156,5 +166,7 @@ export class ImportServiceStack extends cdk.Stack {
       new s3n.LambdaDestination(importFileParser),
       { prefix: 'uploaded/'}
     );
+
+
   }
 }
