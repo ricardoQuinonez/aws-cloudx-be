@@ -44,6 +44,20 @@ export class ImportServiceStack extends cdk.Stack {
       }),
     });
 
+    // Authorization
+    const authorizerArn = cdk.Fn.importValue('BasicAuthorizerArn');
+    const authorizerFn = lambda.Function.fromFunctionArn(
+      this,
+      'ImportedBasicAuthorizer',
+      authorizerArn
+    );
+
+    const tokenAuthorizer = new apigateway.TokenAuthorizer(this, 'ImportAuthorizer', {
+      handler: authorizerFn,
+      identitySource: apigateway.IdentitySource.header('Authorization'),
+    });
+
+
     // Import products lambda
     const importProductsFile  = new lambda.Function(this, 'import-products-file', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -109,6 +123,8 @@ export class ImportServiceStack extends cdk.Stack {
     const importResources = api.root.addResource('import');
     const addFileResources = importResources.addResource('{fileName}');
     addFileResources.addMethod('GET', importProductsFileLambdaIntegration, {
+      authorizer: tokenAuthorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
       methodResponses: [{
         statusCode: '200',
         responseParameters: {
@@ -135,9 +151,14 @@ export class ImportServiceStack extends cdk.Stack {
     addFileResources.addCorsPreflight({
       allowOrigins: ['https://d2hen05bx3i872.cloudfront.net'],
       allowMethods: ['GET', 'PUT', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
+      allowHeaders: [
+        'Content-Type',
+        'X-Amz-Date',
+        'Authorization',
+        'X-Api-Key',
+        'X-Amz-Security-Token'
+      ],
     });
-
     // Import file parser lambda
 
     const catalogItemsQueue = sqs.Queue.fromQueueArn(
@@ -162,11 +183,9 @@ export class ImportServiceStack extends cdk.Stack {
     bucket.grantReadWrite(importFileParser);
 
     bucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
+      s3.EventType.OBJECT_CREATED_PUT,
       new s3n.LambdaDestination(importFileParser),
-      { prefix: 'uploaded/'}
+      { prefix: 'uploaded/', suffix: '.csv' }
     );
-
-
   }
 }
