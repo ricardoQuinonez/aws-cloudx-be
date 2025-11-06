@@ -33,7 +33,7 @@ export const main: Handler = async (event: SQSEvent) => {
           count: Number(product.count)
         });
         if (!result.success) {
-          throw new Error(`BadRequest: ${result.error.message}`);
+          console.error(`BadRequest: ${result.error.message}`);
         }
 
         const productId = uuid();
@@ -84,6 +84,6 @@ export const main: Handler = async (event: SQSEvent) => {
       };
     } catch (error) {
       console.error('Error:', error);
-      throw (error instanceof Error ? error : new Error('Unknown error'));
+      return;
     }
 };
